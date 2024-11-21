@@ -6,8 +6,8 @@ import cors from 'cors';
 
 dotenv.config();
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+const app = express(); // Creating an instance of the Express application
+const PORT = process.env.PORT || 3000; // Set the port
 
 // MySQL connection
 const db = mysql.createConnection({
@@ -25,7 +25,7 @@ app.use((req, res, next) => {
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json()); // Parse JSON bodies
 
 // Route for the Home Page
 app.get('/', (req, res) => {
@@ -36,6 +36,7 @@ app.get('/', (req, res) => {
 app.get("/api/products", (req, res) => {
   db.query("SELECT * FROM products", (err, results) => {
     if (err) {
+      console.error("Error fetching products:", err);
       return res.status(500).json({ error: err.message });
     }
     res.json(results);
@@ -49,6 +50,7 @@ app.post("/api/products", (req, res) => {
   
   db.query(query, [product_name, product_description, price, stock_quantity], (err, results) => {
     if (err) {
+      console.error("Error creating product:", err);
       return res.status(500).json({ error: err.message });
     }
     res.status(201).json({
@@ -65,9 +67,15 @@ app.post("/api/products", (req, res) => {
 app.post("/api/orders", (req, res) => {
   const { product_id, quantity } = req.body;
 
+  // Validate input
+  if (!product_id || !quantity || quantity <= 0) {
+    return res.status(400).json({ error: "Invalid product ID or quantity" });
+  }
+
   // Check if the product exists and has enough stock
   db.query("SELECT * FROM products WHERE product_id = ?", [product_id], (err, results) => {
     if (err) {
+      console.error("Error fetching product for order:", err);
       return res.status(500).json({ error: err.message });
     }
     if (results.length === 0) {
@@ -83,6 +91,7 @@ app.post("/api/orders", (req, res) => {
     const newStockQuantity = product.stock_quantity - quantity;
     db.query("UPDATE products SET stock_quantity = ? WHERE product_id = ?", [newStockQuantity, product_id], (err) => {
       if (err) {
+        console.error("Error updating stock quantity:", err);
         return res.status(500).json({ error: err.message });
       }
 
@@ -97,7 +106,7 @@ app.post("/api/orders", (req, res) => {
   });
 });
 
-// Start the server
+// Start the server on a specified port (default to 3000)
 app.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
+  console.log(`Server is running on http://localhost:${PORT}`); // Log that the server is running
 });
