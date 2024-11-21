@@ -1,6 +1,7 @@
 // ecommerce-app/ecommerce-frontend/src/components/Orders.js
 import React, { useEffect, useState } from "react";
 import axios from "axios";
+import './Orders.css'; // Import the CSS file
 
 const Orders = () => {
   const [orders, setOrders] = useState([]);

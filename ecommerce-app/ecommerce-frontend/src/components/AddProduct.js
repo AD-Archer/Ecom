@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import axios from "axios";
+import './AddProduct.css';
 
 const AddProduct = () => {
   const [productName, setProductName] = useState("");
@@ -28,9 +29,9 @@ const AddProduct = () => {
   };
 
   return (
-    <div>
+    <div className="add-product-container">
       <h2>Add New Product</h2>
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit} className="add-product-form">
         <input
           type="text"
           value={productName}
