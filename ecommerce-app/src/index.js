@@ -1,112 +1,119 @@
-// ecommerce-app/src/index.js
-import express from 'express'; // Importing the Express module using ES6 syntax
-import mysql from 'mysql2';
-import dotenv from 'dotenv';
-import cors from 'cors';
+import express from "express";
+import mysql from "mysql2/promise";
+import dotenv from "dotenv";
+import cors from "cors";
+import session from "express-session"; // Import express-session
 
-dotenv.config();
+dotenv.config(); // Load environment variables
 
-const app = express(); // Creating an instance of the Express application
-const PORT = process.env.PORT || 3000; // Set the port
+const app = express();
+const PORT = process.env.PORT || 3000;
 
 // MySQL connection
-const db = mysql.createConnection({
+const db = await mysql.createConnection({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
 });
 
-// Middleware for logging incoming requests
-app.use((req, res, next) => {
-  console.log(`${req.method} request to ${req.url}`); // Log the HTTP method and URL of the request
-  next(); // Pass control to the next middleware or route handler
+// Middleware
+app.use(cors({
+  origin: 'http://localhost:3001', // Update this to your frontend URL
+  credentials: true // Allow credentials
+})); // Enable CORS
+app.use(express.json()); // Parse JSON bodies
+app.use(session({
+  secret: 'your_secret_key', // Change this to a secure key
+  resave: false,
+  saveUninitialized: true,
+}));
+
+// User Registration
+app.post("/api/register", async (req, res) => {
+  const { first_name, last_name, email, phone } = req.body;
+  try {
+    const [result] = await db.query(
+      "INSERT INTO customers (first_name, last_name, email, phone) VALUES (?, ?, ?, ?)",
+      [first_name, last_name, email, phone]
+    );
+    res.status(201).json({ message: "User registered successfully", userId: result.insertId });
+  } catch (err) {
+    console.error("Error registering user:", err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// Middleware
-app.use(cors());
-app.use(express.json()); // Parse JSON bodies
+// User Login (for simplicity, just setting user ID in session)
+app.post("/api/login", async (req, res) => {
+  const { email } = req.body;
+  try {
+    const [rows] = await db.query("SELECT * FROM customers WHERE email = ?", [email]);
+    if (rows.length > 0) {
+      req.session.userId = rows[0].customer_id; // Store user ID in session
+      console.log("User logged in, session:", req.session); // Log session data
+      res.json({ message: "User logged in successfully" });
+    } else {
+      res.status(401).json({ error: "Invalid email" });
+    }
+  } catch (err) {
+    console.error("Error logging in:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
-// Route for the Home Page
-app.get('/', (req, res) => {
-  res.send('Home Page'); // Send a response back to the user
+// Place Order
+app.post("/api/orders", async (req, res) => {
+  const { total_amount, order_status } = req.body;
+  const customerId = req.session.userId; // Get user ID from session
+  if (!customerId) {
+    return res.status(401).json({ error: "User not logged in" });
+  }
+  try {
+    const [result] = await db.query(
+      "INSERT INTO orders (customer_id, total_amount, order_status) VALUES (?, ?, ?)",
+      [customerId, total_amount, order_status]
+    );
+    res.status(201).json({ message: "Order placed successfully", orderId: result.insertId });
+  } catch (err) {
+    console.error("Error placing order:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// API endpoint to get orders for logged-in user
+app.get("/api/orders", async (req, res) => {
+  const customerId = req.session.userId; // Get user ID from session
+  if (!customerId) {
+    return res.status(401).json({ error: "User not logged in" });
+  }
+  try {
+    const [results] = await db.query(`
+      SELECT o.order_id, o.order_date, o.total_amount, o.order_status, 
+             c.first_name, c.last_name, c.email
+      FROM orders o
+      JOIN customers c ON o.customer_id = c.customer_id
+      WHERE o.customer_id = ?
+    `, [customerId]);
+    res.json(results);
+  } catch (err) {
+    console.error("Error fetching orders:", err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // API endpoint to get products
-app.get("/api/products", (req, res) => {
-  db.query("SELECT * FROM products", (err, results) => {
-    if (err) {
-      console.error("Error fetching products:", err);
-      return res.status(500).json({ error: err.message });
-    }
+app.get("/api/products", async (req, res) => {
+  try {
+    const [results] = await db.query("SELECT * FROM products");
     res.json(results);
-  });
-});
-
-// API endpoint to create a new product
-app.post("/api/products", (req, res) => {
-  const { product_name, product_description, price, stock_quantity } = req.body;
-  const query = "INSERT INTO products (product_name, product_description, price, stock_quantity) VALUES (?, ?, ?, ?)";
-  
-  db.query(query, [product_name, product_description, price, stock_quantity], (err, results) => {
-    if (err) {
-      console.error("Error creating product:", err);
-      return res.status(500).json({ error: err.message });
-    }
-    res.status(201).json({
-      product_id: results.insertId,
-      product_name,
-      product_description,
-      price,
-      stock_quantity,
-    });
-  });
-});
-
-// API endpoint to create an order
-app.post("/api/orders", (req, res) => {
-  const { product_id, quantity } = req.body;
-
-  // Validate input
-  if (!product_id || !quantity || quantity <= 0) {
-    return res.status(400).json({ error: "Invalid product ID or quantity" });
+  } catch (err) {
+    console.error("Error fetching products:", err);
+    res.status(500).json({ error: err.message });
   }
-
-  // Check if the product exists and has enough stock
-  db.query("SELECT * FROM products WHERE product_id = ?", [product_id], (err, results) => {
-    if (err) {
-      console.error("Error fetching product for order:", err);
-      return res.status(500).json({ error: err.message });
-    }
-    if (results.length === 0) {
-      return res.status(404).json({ error: "Product not found" });
-    }
-
-    const product = results[0];
-    if (product.stock_quantity < quantity) {
-      return res.status(400).json({ error: "Not enough stock available" });
-    }
-
-    // Update the stock quantity
-    const newStockQuantity = product.stock_quantity - quantity;
-    db.query("UPDATE products SET stock_quantity = ? WHERE product_id = ?", [newStockQuantity, product_id], (err) => {
-      if (err) {
-        console.error("Error updating stock quantity:", err);
-        return res.status(500).json({ error: err.message });
-      }
-
-      // Respond with the order details
-      res.status(201).json({
-        message: "Order placed successfully",
-        product_id,
-        quantity,
-        remaining_stock: newStockQuantity,
-      });
-    });
-  });
 });
 
-// Start the server on a specified port (default to 3000)
+// Start the server
 app.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`); // Log that the server is running
+  console.log(`Server is running on http://localhost:${PORT}`);
 });

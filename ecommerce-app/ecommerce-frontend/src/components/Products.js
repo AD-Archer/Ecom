@@ -5,7 +5,6 @@ import ProductCard from "./ProductCard";
 
 const Products = () => {
   const [products, setProducts] = useState([]);
-  const [orderQuantity, setOrderQuantity] = useState(1);
 
   const fetchProducts = async () => {
     try {
@@ -16,30 +15,18 @@ const Products = () => {
     }
   };
 
+  const handleOrder = (productId) => {
+    console.log("Ordering product with ID:", productId);
+    // Add your order logic here
+  };
+
   useEffect(() => {
     fetchProducts();
   }, []);
 
-  const handleOrder = async (product_id) => {
-    try {
-      const response = await axios.post("http://localhost:3000/api/orders", { product_id, quantity: orderQuantity });
-      console.log("Order response:", response.data);
-      fetchProducts(); // Re-fetch products to update stock
-    } catch (error) {
-      console.error("Error placing order:", error.response ? error.response.data : error.message);
-    }
-  };
-
   return (
     <div>
       <h2>Available Products</h2>
-      <input
-        type="number"
-        value={orderQuantity}
-        onChange={(e) => setOrderQuantity(e.target.value)}
-        min="1"
-        placeholder="Quantity"
-      />
       <div className="product-list">
         {products.length > 0 ? (
           products.map((product) => (
