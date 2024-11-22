@@ -1,57 +1,52 @@
 import express from "express";
-import mysql from "mysql2/promise";
 import dotenv from "dotenv";
 import cors from "cors";
-import session from "express-session"; // Import express-session
+import session from "express-session";
+import sequelize from './models/index.js'; // Import Sequelize configuration
+import Customer from './models/Customer.js';
+import Product from './models/Product.js';
+import Order from './models/Order.js';
+import OrderItem from './models/OrderItem.js';
 
-dotenv.config(); // Load environment variables
+dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// MySQL connection
-const db = await mysql.createConnection({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-});
-
-// Middleware
 app.use(cors({
-  origin: 'http://localhost:3001', // Update this to your frontend URL
-  credentials: true // Allow credentials
-})); // Enable CORS
-app.use(express.json()); // Parse JSON bodies
+  origin: 'http://localhost:3001',
+  credentials: true
+}));
+app.use(express.json());
 app.use(session({
-  secret: 'your_secret_key', // Change this to a secure key
+  secret: 'your_secret_key',
   resave: false,
   saveUninitialized: true,
 }));
+
+// Sync Sequelize models with the database
+sequelize.sync();
 
 // User Registration
 app.post("/api/register", async (req, res) => {
   const { first_name, last_name, email, phone } = req.body;
   try {
-    const [result] = await db.query(
-      "INSERT INTO customers (first_name, last_name, email, phone) VALUES (?, ?, ?, ?)",
-      [first_name, last_name, email, phone]
-    );
-    res.status(201).json({ message: "User registered successfully", userId: result.insertId });
+    const customer = await Customer.create({ first_name, last_name, email, phone });
+    res.status(201).json({ message: "User registered successfully", userId: customer.customer_id });
   } catch (err) {
     console.error("Error registering user:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// User Login (for simplicity, just setting user ID in session)
+// User Login
 app.post("/api/login", async (req, res) => {
   const { email } = req.body;
   try {
-    const [rows] = await db.query("SELECT * FROM customers WHERE email = ?", [email]);
-    if (rows.length > 0) {
-      req.session.userId = rows[0].customer_id; // Store user ID in session
-      console.log("User logged in, session:", req.session); // Log session data
+    const customer = await Customer.findOne({ where: { email } });
+    if (customer) {
+      req.session.userId = customer.customer_id;
+      console.log("User logged in, session:", req.session);
       res.json({ message: "User logged in successfully" });
     } else {
       res.status(401).json({ error: "Invalid email" });
@@ -65,16 +60,13 @@ app.post("/api/login", async (req, res) => {
 // Place Order
 app.post("/api/orders", async (req, res) => {
   const { total_amount, order_status } = req.body;
-  const customerId = req.session.userId; // Get user ID from session
+  const customerId = req.session.userId;
   if (!customerId) {
     return res.status(401).json({ error: "User not logged in" });
   }
   try {
-    const [result] = await db.query(
-      "INSERT INTO orders (customer_id, total_amount, order_status) VALUES (?, ?, ?)",
-      [customerId, total_amount, order_status]
-    );
-    res.status(201).json({ message: "Order placed successfully", orderId: result.insertId });
+    const order = await Order.create({ customer_id: customerId, total_amount, order_status });
+    res.status(201).json({ message: "Order placed successfully", orderId: order.order_id });
   } catch (err) {
     console.error("Error placing order:", err);
     res.status(500).json({ error: err.message });
@@ -83,19 +75,16 @@ app.post("/api/orders", async (req, res) => {
 
 // API endpoint to get orders for logged-in user
 app.get("/api/orders", async (req, res) => {
-  const customerId = req.session.userId; // Get user ID from session
+  const customerId = req.session.userId;
   if (!customerId) {
     return res.status(401).json({ error: "User not logged in" });
   }
   try {
-    const [results] = await db.query(`
-      SELECT o.order_id, o.order_date, o.total_amount, o.order_status, 
-             c.first_name, c.last_name, c.email
-      FROM orders o
-      JOIN customers c ON o.customer_id = c.customer_id
-      WHERE o.customer_id = ?
-    `, [customerId]);
-    res.json(results);
+    const orders = await Order.findAll({
+      where: { customer_id: customerId },
+      include: [{ model: Customer, attributes: ['first_name', 'last_name', 'email'] }]
+    });
+    res.json(orders);
   } catch (err) {
     console.error("Error fetching orders:", err);
     res.status(500).json({ error: err.message });
@@ -105,8 +94,8 @@ app.get("/api/orders", async (req, res) => {
 // API endpoint to get products
 app.get("/api/products", async (req, res) => {
   try {
-    const [results] = await db.query("SELECT * FROM products");
-    res.json(results);
+    const products = await Product.findAll();
+    res.json(products);
   } catch (err) {
     console.error("Error fetching products:", err);
     res.status(500).json({ error: err.message });

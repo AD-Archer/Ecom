@@ -1,0 +1,29 @@
+# Node modules
+node_modules/
+
+# Environment variable files
+.env
+ecommerce-app/.env
+ecommerce-app/ecommerce-frontend/.env
+
+# Logs
+logs/
+*.log
+
+# Build directories
+dist/
+build/
+ecommerce-app/ecommerce-frontend/build/
+
+# Temporary files
+*.tmp
+*.temp
+
+# IDE specific files
+.vscode/
+.idea/
+.DS_Store
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
